@@ -4,6 +4,8 @@ const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const sqlite3 = require('sqlite3').verbose();
+const ALLOWED_STATUSES = ["not started", "in progress", "completed", "cancelled"];
+const ALLOWED_PRIORITIES = ["low", "medium", "high"];
 const db = new sqlite3.Database('./taskflow.db', (err) => {
     if (err) {
         console.error('Error opening database', err.message);
@@ -29,6 +31,9 @@ const db = new sqlite3.Database('./taskflow.db', (err) => {
 
 app.post('/tasks', (req, res) => {
     const title = req.body?.title;
+    const status = req.body?.status;
+    const priority = req.body?.priority ?? "medium";
+    const description = req.body?.description;
     const query = `INSERT INTO tasks (title, description, status, priority) VALUES (?, ?, ?, ?)`;
 
     if (typeof title !== 'string') {
@@ -39,11 +44,21 @@ app.post('/tasks', (req, res) => {
         res.status(400).json({message: "Error, title input is blank"});
         return;
     }
-    if (typeof title === 'undefined') {
-        res.status(400).json({message: "Error, title is undefined."})
+    if (!ALLOWED_STATUSES.includes(status)) {
+        res.status(400).json({message: `Error, status is not an option. Available options: ${ALLOWED_STATUSES.join(', ')}`});
+        return;
+    }
+    if (!ALLOWED_PRIORITIES.includes(priority)) {
+        res.status(400).json({message: `Error, priorities is not an option. Available options: ${ALLOWED_PRIORITIES.join(', ')}`});
+        return;
+    }
+    if (description !== undefined && typeof description !== 'string') {
+        res.status(400).json({message: "Error, description input is not string type."});
+        return;
     }
 
-    const parameters = [title.trim(), req.body.description, req.body.status, req.body.priority];
+
+    const parameters = [title.trim(), description, status, priority];
 
     db.run(query, parameters, function(err) {
     if (err) {
@@ -59,6 +74,18 @@ app.post('/tasks', (req, res) => {
 app.get('/', (req, res) => {
     res.json({ message: "Welcome to TaskFlow API! Server is running successfully." });
 });
+
+app.get('/tasks', (req, res) => {
+    const query = `SELECT * FROM tasks`
+    db.all(query, [], (err, tasks) => {
+        if (err) {
+            console.error(err.message);
+            res.status(500).json({error: err.message});
+        } else {
+            res.status(200).json({tasks, count: tasks.length})
+        }
+    });
+})
 
 // Start the server
 app.listen(PORT, () => {
